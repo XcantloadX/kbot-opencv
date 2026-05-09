@@ -1,0 +1,141 @@
+name: Build & Test NumPy (no OpenBLAS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      numpy_version:
+        description: NumPy version to build
+        default: 1.26.4
+        type: string
+      skip_test:
+        description: Skip testing after build
+        default: false
+        type: boolean
+
+env:
+  NUMPY_VERSION: ${{ inputs.numpy_version || '1.26.4' }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.9", "3.10", "3.11"]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build NumPy wheel (no OpenBLAS)
+        run: python numpy1/build_numpy.py
+        env:
+          NUMPY_VERSION: ${{ env.NUMPY_VERSION }}
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: numpy-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  build-arm:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build NumPy ARM64 wheel
+        run: python numpy1/build_numpy.py
+        env:
+          NUMPY_VERSION: ${{ env.NUMPY_VERSION }}
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: numpy-wheel-ubuntu-arm64-py3.11
+          path: dist/*.whl
+          if-no-files-found: error
+
+  test:
+    if: ${{ !inputs.skip_test }}
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.9", "3.10", "3.11"]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: numpy-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: dist
+
+      - name: Test NumPy wheel
+        run: python numpy1/test_numpy.py dist/*.whl
+
+  test-arm:
+    if: ${{ !inputs.skip_test }}
+    needs: [build-arm]
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download ARM64 wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: numpy-wheel-ubuntu-arm64-py3.11
+          path: dist
+
+      - name: Test NumPy ARM64 wheel
+        run: python numpy1/test_numpy.py dist/*.whl
+
+  release:
+    needs: [build, build-arm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release and upload wheels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="numpy-v${{ env.NUMPY_VERSION }}-noblas-build-${{ github.run_id }}"
+          gh release create "$TAG_NAME" \
+            --title "NumPy ${{ env.NUMPY_VERSION }} (no OpenBLAS)" \
+            --notes "Build from workflow run [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+            artifacts/**/*.whl
