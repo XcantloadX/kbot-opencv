@@ -39,7 +39,7 @@ jobs:
           sudo apt-get install -y -qq cmake build-essential
 
       - name: Build OpenCV wheel
-        run: python scripts/build_opencv.py
+        run: python opencv/build_opencv.py
         env:
           OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
 
