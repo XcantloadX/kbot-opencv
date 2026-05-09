@@ -48,6 +48,14 @@ def main():
         run(["git", "clone", "--depth", "1", "--branch", opencv_version,
              "https://github.com/opencv/opencv_contrib.git"], cwd=src_dir)
 
+    # ---- Patch typing stubs generator to skip unresolvable types ----
+    patch_file = root / "scripts" / "typing_generator.patch"
+    if patch_file.exists():
+        log(f"Applying patch: {patch_file}")
+        run(["git", "apply", str(patch_file)], cwd=src_dir / "opencv")
+    else:
+        log("WARN: typing_generator.patch not found, skipping")
+
     # ---- CMake Configure ----
     if build_dir.exists():
         shutil.rmtree(build_dir)
@@ -156,6 +164,9 @@ def package_wheel(install_dir, staging, dist_dir, version, python_exe):
         dest = pkg_dir / item.name
         (shutil.copytree if item.is_dir() else shutil.copy2)(item, dest)
 
+    # Fix auto-generated typing module (remove stale refs to skipped types)
+    _clean_typing_module(pkg_dir)
+
     # Fix config files: replace hardcoded build paths with relative paths
     fix_config_files(pkg_dir, version)
 
@@ -207,6 +218,23 @@ def package_wheel(install_dir, staging, dist_dir, version, python_exe):
                 zf.write(file_path, arcname)
 
     log(f"Created wheel: {wheel_path} ({wheel_path.stat().st_size / 1024 / 1024:.1f} MB)")
+
+
+
+
+def _clean_typing_module(pkg_dir):
+    """Remove stale aliases from generated typing module that reference skipped types."""
+    import re
+    init_py = pkg_dir / "typing" / "__init__.py"
+    if not init_py.exists():
+        return
+    content = init_py.read_text(encoding="utf-8")
+    for name in ["ExtractArgsCallback", "ExtractMetaCallback"]:
+        content = content.replace(f'    "{name}",\n', "")
+        content = re.sub(r"^" + re.escape(name) + r"\s*=.*\n?", "", content, flags=re.MULTILINE)
+    # Clean up blank lines in __all__
+    content = re.sub(r'\n\s*\n([ ]*")', r"\n\1", content)
+    init_py.write_text(content)
 
 
 def fix_config_files(pkg_dir, version):

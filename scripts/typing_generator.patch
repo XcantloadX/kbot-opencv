@@ -1,0 +1,25 @@
+diff --git a/modules/python/src2/typing_stubs_generation/generation.py b/modules/python/src2/typing_stubs_generation/generation.py
+index 563c09c..ddd302e 100644
+--- a/modules/python/src2/typing_stubs_generation/generation.py
++++ b/modules/python/src2/typing_stubs_generation/generation.py
+@@ -791,10 +791,14 @@ def _generate_typing_module(root: NamespaceNode, output_path: Path) -> None:
+     # Resolve each node and register aliases
+     TypeNode.compatible_to_runtime_usage = True
+     for node in PREDEFINED_TYPES.values():
+-        node.resolve(root)
+-        if isinstance(node, AliasTypeNode):
+-            register_alias(node)
+-        elif isinstance(node, ConditionalAliasTypeNode):
+-            conditional_type_nodes[node.ctype_name] = node
++        try:
++            node.resolve(root)
++            if isinstance(node, AliasTypeNode):
++                register_alias(node)
++            elif isinstance(node, ConditionalAliasTypeNode):
++                conditional_type_nodes[node.ctype_name] = node
++        except Exception:
++            warnings.warn(f"Failed to resolve '{node.ctype_name}', skipping")
++            continue
+ 
+     for node in conditional_type_nodes.values():
+         for required_import in node.required_definition_imports:
