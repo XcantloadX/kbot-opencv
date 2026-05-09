@@ -143,10 +143,11 @@ def package_wheel(install_dir, staging, dist_dir, version, python_exe):
 
     # Build the wheel structure
     pkg_name = "cv2"
-    dist_name = "opencv_minimal"
+    dist_name = "opencv-python"
+    dist_name_norm = dist_name.replace("-", "_")
 
     pkg_dir = staging / pkg_name
-    dist_info = staging / f"{dist_name}-{version}.dist-info"
+    dist_info = staging / f"{dist_name_norm}-{version}.dist-info"
     pkg_dir.mkdir(parents=True)
     dist_info.mkdir(parents=True)
 
@@ -192,12 +193,12 @@ def package_wheel(install_dir, staging, dist_dir, version, python_exe):
             h = hashlib.sha256(file_path.read_bytes()).hexdigest()
             sz = file_path.stat().st_size
             records.append(f"{arcname},sha256={h},{sz}")
-    records.append(f"{dist_name}-{version}.dist-info/RECORD,,")
+    records.append(f"{dist_name_norm}-{version}.dist-info/RECORD,,")
     (dist_info / "RECORD").write_text("\n".join(records) + "\n")
 
     # Create .whl file
     os.makedirs(dist_dir, exist_ok=True)
-    wheel_name = f"{dist_name}-{version}-{tag}.whl"
+    wheel_name = f"{dist_name_norm}-{version}-{tag}.whl"
     wheel_path = dist_dir / wheel_name
     with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for file_path in staging.rglob("*"):
