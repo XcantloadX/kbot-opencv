@@ -1,0 +1,75 @@
+name: Build OpenCV Wheels
+
+on:
+  workflow_dispatch:
+    inputs:
+      opencv_version:
+        description: OpenCV version to build
+        default: 4.10.0
+        type: string
+
+env:
+  OPENCV_VERSION: ${{ inputs.opencv_version || '4.10.0' }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Python dependencies
+        run: python -m pip install numpy wheel
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake build-essential
+
+      - name: Build OpenCV wheel
+        run: python scripts/build_opencv.py
+        env:
+          OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-wheel-${{ matrix.os }}-${{ matrix.python-version }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release and upload wheels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="opencv-v${{ env.OPENCV_VERSION }}-build-${{ github.run_id }}"
+          gh release create "$TAG_NAME" \
+            --title "OpenCV ${{ env.OPENCV_VERSION }} Minimal Wheels" \
+            --notes "Build from workflow run [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+            artifacts/**/*.whl

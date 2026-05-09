@@ -1,0 +1,13 @@
+opencv_src/
+opencv_build/
+opencv_install/
+wheel_staging/
+dist/
+*.whl
+*.egg-info/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+test_venv/
+artifacts/
