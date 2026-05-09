@@ -1,4 +1,4 @@
-name: Build OpenCV Wheels
+name: Build & Test OpenCV Wheels
 
 on:
   workflow_dispatch:
@@ -7,6 +7,10 @@ on:
         description: OpenCV version to build
         default: 4.10.0
         type: string
+      skip_test:
+        description: Skip testing after build
+        default: false
+        type: boolean
 
 env:
   OPENCV_VERSION: ${{ inputs.opencv_version || '4.10.0' }}
@@ -50,8 +54,39 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  test:
+    if: ${{ !inputs.skip_test }}
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Python dependencies
+        run: python -m pip install numpy
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: opencv-wheel-${{ matrix.os }}-${{ matrix.python-version }}
+          path: dist
+
+      - name: Test OpenCV wheel
+        run: python opencv/test_opencv.py dist/*.whl
+
   release:
-    needs: build
+    needs: [build, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write

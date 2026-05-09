@@ -220,6 +220,7 @@ def fix_config_files(pkg_dir: Path) -> None:
     config_py: Path = pkg_dir / "config.py"
     config_py.write_text(
         "import os\n"
+        "LOADER_DIR = os.path.dirname(__file__)\n"
         "BINARIES_PATHS = [LOADER_DIR] + BINARIES_PATHS\n"
     )
     log("Fixed config.py")
@@ -227,6 +228,8 @@ def fix_config_files(pkg_dir: Path) -> None:
     config_ver: Path = pkg_dir / f"config-{sys.version_info.major}.{sys.version_info.minor}.py"
     if config_ver.exists():
         config_ver.write_text(
+            "import os\n"
+            "LOADER_DIR = os.path.dirname(__file__)\n"
             "PYTHON_EXTENSIONS_PATHS = [os.path.join(LOADER_DIR, '{}')] + PYTHON_EXTENSIONS_PATHS\n"
             .format(py_ver)
         )
