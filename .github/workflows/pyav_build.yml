@@ -1,0 +1,191 @@
+name: Build & Test PyAV Wheels
+
+on:
+  workflow_dispatch:
+    inputs:
+      ffmpeg_version:
+        description: "FFmpeg git tag (e.g. n7.1)"
+        default: n7.1
+        type: string
+      pyav_version:
+        description: "PyAV release version (e.g. 14.3.0)"
+        default: "14.3.0"
+        type: string
+      skip_test:
+        description: "Skip post-build tests"
+        default: false
+        type: boolean
+
+env:
+  FFMPEG_VERSION: ${{ inputs.ffmpeg_version || 'n7.1' }}
+  PYAV_VERSION:   ${{ inputs.pyav_version   || '14.3.0' }}
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # ── Linux ──────────────────────────────────────────────────────────────
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            nasm build-essential pkg-config
+
+      - name: Build FFmpeg + PyAV (Linux)
+        if: runner.os == 'Linux'
+        run: python pyav/build_pyav.py
+        env:
+          FFMPEG_VERSION: ${{ env.FFMPEG_VERSION }}
+          PYAV_VERSION:   ${{ env.PYAV_VERSION }}
+
+      # ── Windows ────────────────────────────────────────────────────────────
+      # MSYS2 provides: bash, make, nasm, diffutils, pkg-config
+      # path-type: inherit ensures cl.exe (added later by ilammy) is visible
+      # inside the msys2 shell.
+      - name: Set up MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: true
+          install: >-
+            make
+            nasm
+            diffutils
+            pkg-config
+          path-type: inherit
+
+      # Adds cl.exe / link.exe to GitHub Actions PATH so the subsequent
+      # msys2-shell FFmpeg build can use --toolchain=msvc.
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build FFmpeg (Windows, MSYS2 + MSVC)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -e
+
+          git clone --depth=1 \
+            --branch "$FFMPEG_VERSION" \
+            https://git.ffmpeg.org/ffmpeg.git \
+            ffmpeg_src
+
+          PREFIX="$(cygpath -u "$GITHUB_WORKSPACE")/ffmpeg_install"
+
+          cd ffmpeg_src
+          ./configure \
+            --prefix="$PREFIX" \
+            --toolchain=msvc \
+            --target-os=win64 \
+            --arch=x86_64 \
+            --disable-everything \
+            --disable-programs \
+            --disable-doc \
+            --enable-shared \
+            --disable-static \
+            --enable-avcodec \
+            --enable-avformat \
+            --enable-avdevice \
+            --enable-avutil \
+            --enable-avfilter \
+            --enable-swscale \
+            --enable-swresample \
+            --enable-decoder=h264 \
+            --enable-parser=h264 \
+            --enable-bsf=h264_mp4toannexb
+
+          make -j$(nproc)
+          make install
+        env:
+          FFMPEG_VERSION: ${{ env.FFMPEG_VERSION }}
+
+      - name: Build PyAV wheel (Windows)
+        if: runner.os == 'Windows'
+        run: python pyav/build_pyav.py
+        env:
+          PYAV_VERSION:      ${{ env.PYAV_VERSION }}
+          # Tells the script that FFmpeg is already installed; skip the Linux
+          # source build path.
+          FFMPEG_INSTALL_DIR: ${{ github.workspace }}\ffmpeg_install
+
+      # ── Upload ──────────────────────────────────────────────────────────────
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyav-wheel-${{ matrix.os }}-${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  test:
+    if: ${{ !inputs.skip_test }}
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pyav-wheel-${{ matrix.os }}-${{ matrix.python-version }}
+          path: dist
+
+      - name: Test PyAV wheel
+        run: python pyav/test_pyav.py "dist/*.whl"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  release:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release and upload wheels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="pyav-v${{ env.PYAV_VERSION }}-ffmpeg-${{ env.FFMPEG_VERSION }}-build-${{ github.run_id }}"
+          gh release create "$TAG_NAME" \
+            --title "PyAV ${{ env.PYAV_VERSION }} (FFmpeg ${{ env.FFMPEG_VERSION }}, H.264-only)" \
+            --notes "Build from workflow run [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+            artifacts/**/*.whl
