@@ -1,4 +1,4 @@
-name: Build & Test OpenCV Wheels
+name: Build & Test OpenCV
 
 on:
   workflow_dispatch:

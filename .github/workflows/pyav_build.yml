@@ -1,4 +1,4 @@
-name: Build & Test PyAV Wheels
+name: Build & Test PyAV
 
 on:
   workflow_dispatch:

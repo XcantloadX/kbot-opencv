@@ -1,4 +1,4 @@
-name: Build & Test PySide6 Slim Wheels
+name: Build & Test PySide6
 
 on:
   workflow_dispatch:

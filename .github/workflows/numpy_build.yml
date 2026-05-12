@@ -1,4 +1,4 @@
-name: Build & Test NumPy (no OpenBLAS)
+name: Build & Test NumPy
 
 on:
   workflow_dispatch:
