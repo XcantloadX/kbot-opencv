@@ -273,10 +273,14 @@ def copy_opencv_libs(install_dir: Path, dst_dir: Path) -> list[str]:
     else:
         ext: str = "*.dylib*" if SYSTEM == "Darwin" else "*.so*"
         for lib in install_dir.rglob(ext):
-            if lib.is_symlink():
-                continue
             if "opencv" in lib.name.lower():
-                shutil.copy2(lib, dst_dir / lib.name)
+                if lib.is_symlink():
+                    link_target = os.readlink(lib)
+                    link_dest = dst_dir / lib.name
+                    if not link_dest.exists():
+                        link_dest.symlink_to(link_target)
+                else:
+                    shutil.copy2(lib, dst_dir / lib.name)
                 copied.append(lib.name)
     return copied
 

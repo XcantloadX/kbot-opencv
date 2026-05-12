@@ -19,17 +19,17 @@ def check_core():
     m = cv2.Mat(np.zeros((100, 100, 3), dtype=np.uint8))
     print(f"Mat shape: {m.shape}, dtype: {m.dtype}, size: {m.size}")
 
-    s = cv2.Scalar(10, 20, 30, 255)
+    s = (10, 20, 30, 255)
     print(f"Scalar: {s}")
 
-    p = cv2.Point(42, 99)
+    p = (42, 99)
     print(f"Point: {p}")
 
-    size = cv2.Size(640, 480)
+    size = (640, 480)
     print(f"Size: {size}")
 
-    rect = cv2.Rect(10, 20, 200, 150)
-    print(f"Rect: {rect}, area: {rect.area()}")
+    rect = (10, 20, 200, 150)
+    print(f"Rect: {rect}, area: {rect[2] * rect[3]}")
 
     # LUT
     lut = np.arange(256, dtype=np.uint8)
