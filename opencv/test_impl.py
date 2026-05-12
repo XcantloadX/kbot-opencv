@@ -16,7 +16,7 @@ print(f"Install path: {cv2.__file__}")
 
 def check_core():
     print("\n--- core ---")
-    m = cv2.Mat(np.zeros((100, 100, 3), dtype=np.uint8))
+    m = np.zeros((100, 100, 3), dtype=np.uint8)
     print(f"Mat shape: {m.shape}, dtype: {m.dtype}, size: {m.size}")
 
     s = (10, 20, 30, 255)
